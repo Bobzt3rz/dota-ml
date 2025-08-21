@@ -1,0 +1,5 @@
+# get 1 million most recent games
+
+curl "https://api.opendota.com/api/explorer" \
+  --get \
+  --data-urlencode "sql=SELECT * FROM public_matches ORDER BY match_id DESC LIMIT 1000000" -o /tmp/ml_dataset_1m.json
