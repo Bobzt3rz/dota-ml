@@ -2,7 +2,7 @@
 """
 Dota 2 Public Matches Dataset Explorer
 Explores the 500k matches dataset to understand the data structure and patterns.
-Updated to handle OpenDota API response format.
+Enhanced with dotaconstants integration for human-readable hero names and analysis.
 """
 
 import json
@@ -13,11 +13,53 @@ import seaborn as sns
 from datetime import datetime
 from collections import Counter
 import warnings
+import os
+import sys
 warnings.filterwarnings('ignore')
 
 # Set up plotting style
 plt.style.use('default')
 sns.set_palette("husl")
+
+def load_hero_constants():
+    """Load hero data from dotaconstants submodule"""
+    try:
+        # Path to dotaconstants submodule
+        constants_path = os.path.join(os.path.dirname(__file__), '..', 'libs', 'dotaconstants', 'build')
+        
+        with open(os.path.join(constants_path, 'heroes.json'), 'r') as f:
+            heroes_data = json.load(f)
+        
+        # Create ID to name mapping
+        id_to_name = {}
+        name_to_id = {}
+        
+        for hero_id, hero_info in heroes_data.items():
+            hero_id = int(hero_id)
+            hero_name = hero_info.get('localized_name', hero_info.get('name', f'Hero {hero_id}'))
+            id_to_name[hero_id] = hero_name
+            name_to_id[hero_name] = hero_id
+            
+        print(f"✅ Loaded {len(id_to_name)} heroes from dotaconstants")
+        return id_to_name, name_to_id, heroes_data
+        
+    except Exception as e:
+        print(f"⚠️  Could not load hero constants: {e}")
+        print("📝 To fix this:")
+        print("   1. Make sure dotaconstants submodule is in libs/dotaconstants/")
+        print("   2. Run: cd libs/dotaconstants && npm install && npm run build")
+        print("Using fallback hero mapping...")
+        return {}, {}, {}
+
+def get_hero_info(hero_id, heroes_data):
+    """Get detailed hero information"""
+    hero_data = heroes_data.get(str(hero_id), {})
+    return {
+        'name': hero_data.get('localized_name', f'Hero {hero_id}'),
+        'primary_attr': hero_data.get('primary_attr', 'unknown'),
+        'attack_type': hero_data.get('attack_type', 'unknown'),
+        'roles': hero_data.get('roles', [])
+    }
 
 def load_data(filepath):
     """Load the JSON data from OpenDota API format and convert to DataFrame"""
@@ -307,10 +349,280 @@ def duration_analysis(df):
     plt.savefig('../results/duration_analysis.png', dpi=300, bbox_inches='tight')
     plt.show()
 
-def hero_analysis(df):
-    """Analyze hero picks and basic patterns"""
+def enhanced_hero_analysis(df, id_to_name, heroes_data):
+    """Enhanced hero analysis with actual hero names and attributes"""
     print("\n" + "="*60)
-    print("HERO ANALYSIS")
+    print("ENHANCED HERO ANALYSIS (with hero names)")
+    print("="*60)
+    
+    # Flatten hero picks from both teams
+    all_hero_picks = []
+    radiant_picks = []
+    dire_picks = []
+    hero_winrates = {}
+    
+    for _, row in df.iterrows():
+        if isinstance(row['radiant_team'], list) and isinstance(row['dire_team'], list):
+            radiant_heroes = row['radiant_team']
+            dire_heroes = row['dire_team']
+            
+            all_hero_picks.extend(radiant_heroes)
+            all_hero_picks.extend(dire_heroes)
+            radiant_picks.extend(radiant_heroes)
+            dire_picks.extend(dire_heroes)
+            
+            # Track wins for each hero on radiant side
+            for hero_id in radiant_heroes:
+                if hero_id not in hero_winrates:
+                    hero_winrates[hero_id] = {'wins': 0, 'games': 0}
+                hero_winrates[hero_id]['games'] += 1
+                if row['radiant_win']:
+                    hero_winrates[hero_id]['wins'] += 1
+            
+            # Track losses for each hero on dire side
+            for hero_id in dire_heroes:
+                if hero_id not in hero_winrates:
+                    hero_winrates[hero_id] = {'wins': 0, 'games': 0}
+                hero_winrates[hero_id]['games'] += 1
+                if not row['radiant_win']:
+                    hero_winrates[hero_id]['wins'] += 1
+
+    hero_counts = Counter(all_hero_picks)
+    total_picks = len(all_hero_picks)
+    total_matches = len(df)
+    
+    print(f"Total hero picks: {total_picks:,}")
+    print(f"Unique heroes: {len(hero_counts)}")
+    print(f"Picks per match: {total_picks / total_matches:.1f}")
+    
+    # Most popular heroes with names
+    print(f"\n🏆 Most Popular Heroes:")
+    for i, (hero_id, count) in enumerate(hero_counts.most_common(15), 1):
+        hero_name = id_to_name.get(hero_id, f'Hero {hero_id}')
+        pick_rate = count / total_picks * 100
+        print(f"  {i:2d}. {hero_name:<20} {count:>6,} picks ({pick_rate:>5.2f}%)")
+    
+    # Calculate overall winrates
+    hero_wr_data = []
+    for hero_id, stats in hero_winrates.items():
+        if stats['games'] >= 100:  # Minimum 100 games
+            winrate = stats['wins'] / stats['games']
+            hero_name = id_to_name.get(hero_id, f'Hero {hero_id}')
+            hero_info = get_hero_info(hero_id, heroes_data)
+            
+            hero_wr_data.append({
+                'hero_id': hero_id,
+                'hero_name': hero_name,
+                'games': stats['games'],
+                'winrate': winrate,
+                'primary_attr': hero_info['primary_attr'],
+                'attack_type': hero_info['attack_type'],
+                'roles': hero_info['roles']
+            })
+    
+    if hero_wr_data:
+        wr_df = pd.DataFrame(hero_wr_data)
+        wr_df = wr_df.sort_values('winrate', ascending=False)
+        
+        print(f"\n🎯 Highest Winrate Heroes (min 100 games):")
+        for i, row in wr_df.head(10).iterrows():
+            print(f"  {i+1:2d}. {row['hero_name']:<20} {row['winrate']:>6.3f} ({row['games']:>4} games) [{row['primary_attr']}]")
+        
+        print(f"\n📉 Lowest Winrate Heroes:")
+        for i, row in wr_df.tail(10).iterrows():
+            print(f"  {len(wr_df)-(len(wr_df)-i-1)+1:2d}. {row['hero_name']:<20} {row['winrate']:>6.3f} ({row['games']:>4} games) [{row['primary_attr']}]")
+        
+        # Analyze by primary attribute
+        if heroes_data:
+            print(f"\n⚡ Winrate by Primary Attribute:")
+            attr_stats = wr_df.groupby('primary_attr').agg({
+                'winrate': ['mean', 'count'],
+                'games': 'sum'
+            }).round(3)
+            attr_stats.columns = ['avg_winrate', 'hero_count', 'total_games']
+            print(attr_stats)
+            
+            # Analyze by attack type
+            print(f"\n🏹 Winrate by Attack Type:")
+            attack_stats = wr_df.groupby('attack_type').agg({
+                'winrate': ['mean', 'count'],
+                'games': 'sum'
+            }).round(3)
+            attack_stats.columns = ['avg_winrate', 'hero_count', 'total_games']
+            print(attack_stats)
+        
+        # Create enhanced visualizations
+        create_enhanced_hero_plots(wr_df, hero_counts, id_to_name, heroes_data)
+        
+        return wr_df
+    else:
+        print("⚠️  Not enough data for winrate analysis")
+        return None
+
+def create_enhanced_hero_plots(wr_df, hero_counts, id_to_name, heroes_data):
+    """Create enhanced hero analysis plots with names"""
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # Top picked heroes with names
+    top_heroes = dict(list(hero_counts.most_common(15)))
+    hero_names = [id_to_name.get(hid, f'Hero {hid}')[:12] for hid in top_heroes.keys()]
+    
+    bars1 = ax1.bar(range(len(top_heroes)), list(top_heroes.values()), 
+                   alpha=0.8, color='lightblue', edgecolor='navy', linewidth=0.5)
+    ax1.set_title('Top 15 Most Picked Heroes', fontsize=14, fontweight='bold', pad=20)
+    ax1.set_xlabel('Heroes', fontsize=12)
+    ax1.set_ylabel('Pick Count', fontsize=12)
+    ax1.set_xticks(range(len(hero_names)))
+    ax1.set_xticklabels(hero_names, rotation=45, ha='right')
+    ax1.grid(True, alpha=0.3, axis='y')
+    
+    # Add value labels on bars
+    for i, v in enumerate(top_heroes.values()):
+        ax1.text(i, v + max(top_heroes.values())*0.01, f'{v:,}', 
+                ha='center', va='bottom', fontsize=9, fontweight='bold')
+    
+    # Winrate distribution by primary attribute
+    if heroes_data and 'primary_attr' in wr_df.columns:
+        attr_colors = {'str': 'red', 'agi': 'green', 'int': 'blue', 'all': 'purple'}
+        for attr in wr_df['primary_attr'].unique():
+            if attr in attr_colors:
+                attr_data = wr_df[wr_df['primary_attr'] == attr]['winrate']
+                ax2.hist(attr_data, alpha=0.6, label=f'{attr.upper()} ({len(attr_data)} heroes)',
+                        color=attr_colors[attr], bins=15, edgecolor='black', linewidth=0.5)
+        
+        ax2.set_title('Winrate Distribution by Primary Attribute', fontsize=14, fontweight='bold', pad=20)
+        ax2.set_xlabel('Winrate', fontsize=12)
+        ax2.set_ylabel('Number of Heroes', fontsize=12)
+        ax2.axvline(x=0.5, color='black', linestyle='--', alpha=0.7, linewidth=2, label='50% baseline')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+    else:
+        # Fallback: simple winrate distribution
+        ax2.hist(wr_df['winrate'], bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+        ax2.set_title('Hero Winrate Distribution', fontsize=14, fontweight='bold', pad=20)
+        ax2.set_xlabel('Winrate', fontsize=12)
+        ax2.set_ylabel('Number of Heroes', fontsize=12)
+        ax2.axvline(x=0.5, color='black', linestyle='--', alpha=0.7, linewidth=2)
+    
+    # Winrate vs popularity scatter
+    popularity_data = []
+    winrate_data = []
+    names_data = []
+    colors_data = []
+    
+    attr_colors = {'str': 'red', 'agi': 'green', 'int': 'blue', 'all': 'purple'}
+    
+    for _, row in wr_df.iterrows():
+        if row['hero_id'] in hero_counts:
+            popularity_data.append(hero_counts[row['hero_id']])
+            winrate_data.append(row['winrate'])
+            names_data.append(row['hero_name'])
+            colors_data.append(attr_colors.get(row['primary_attr'], 'gray'))
+    
+    scatter = ax3.scatter(popularity_data, winrate_data, alpha=0.7, c=colors_data, s=60, edgecolors='black', linewidth=0.5)
+    ax3.set_title('Hero Winrate vs Popularity', fontsize=14, fontweight='bold', pad=20)
+    ax3.set_xlabel('Pick Count', fontsize=12)
+    ax3.set_ylabel('Winrate', fontsize=12)
+    ax3.axhline(y=0.5, color='black', linestyle='--', alpha=0.7, linewidth=2)
+    ax3.grid(True, alpha=0.3)
+    
+    # Add labels for extreme points
+    for i, (x, y, name) in enumerate(zip(popularity_data, winrate_data, names_data)):
+        if y > 0.55 or y < 0.45 or x > max(popularity_data) * 0.8:
+            ax3.annotate(name[:8], (x, y), xytext=(5, 5), textcoords='offset points', 
+                        fontsize=8, alpha=0.8, weight='bold')
+    
+    # Top winrate heroes bar chart
+    top_wr = wr_df.head(12)
+    bars4 = ax4.barh(range(len(top_wr)), top_wr['winrate'], 
+                    alpha=0.8, color='gold', edgecolor='darkorange', linewidth=0.5)
+    ax4.set_title('Top 12 Highest Winrate Heroes', fontsize=14, fontweight='bold', pad=20)
+    ax4.set_xlabel('Winrate', fontsize=12)
+    ax4.set_yticks(range(len(top_wr)))
+    ax4.set_yticklabels([name[:15] for name in top_wr['hero_name']])
+    ax4.axvline(x=0.5, color='black', linestyle='--', alpha=0.7, linewidth=2)
+    ax4.grid(True, alpha=0.3, axis='x')
+    
+    # Add winrate labels
+    for i, (wr, games) in enumerate(zip(top_wr['winrate'], top_wr['games'])):
+        ax4.text(wr + 0.005, i, f'{wr:.3f} ({games})', 
+                va='center', fontsize=9, fontweight='bold')
+    
+    plt.tight_layout()
+    plt.savefig('../results/enhanced_hero_analysis.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+def hero_synergy_analysis(df, id_to_name, min_games=50):
+    """Analyze hero synergies (basic version)"""
+    print(f"\n🤝 Hero Synergy Analysis (min {min_games} games together)")
+    print("="*60)
+    
+    synergy_stats = {}
+    
+    for _, row in df.iterrows():
+        if isinstance(row['radiant_team'], list) and len(row['radiant_team']) == 5:
+            team = sorted(row['radiant_team'])
+            won = row['radiant_win']
+            
+            # Check all pairs in the team
+            for i in range(len(team)):
+                for j in range(i+1, len(team)):
+                    pair = (team[i], team[j])
+                    if pair not in synergy_stats:
+                        synergy_stats[pair] = {'wins': 0, 'games': 0}
+                    synergy_stats[pair]['games'] += 1
+                    if won:
+                        synergy_stats[pair]['wins'] += 1
+        
+        # Same for dire team
+        if isinstance(row['dire_team'], list) and len(row['dire_team']) == 5:
+            team = sorted(row['dire_team'])
+            won = not row['radiant_win']
+            
+            for i in range(len(team)):
+                for j in range(i+1, len(team)):
+                    pair = (team[i], team[j])
+                    if pair not in synergy_stats:
+                        synergy_stats[pair] = {'wins': 0, 'games': 0}
+                    synergy_stats[pair]['games'] += 1
+                    if won:
+                        synergy_stats[pair]['wins'] += 1
+    
+    # Filter and calculate winrates
+    good_synergies = []
+    for pair, stats in synergy_stats.items():
+        if stats['games'] >= min_games:
+            winrate = stats['wins'] / stats['games']
+            hero1_name = id_to_name.get(pair[0], f'Hero {pair[0]}')
+            hero2_name = id_to_name.get(pair[1], f'Hero {pair[1]}')
+            good_synergies.append({
+                'hero1': hero1_name,
+                'hero2': hero2_name,
+                'winrate': winrate,
+                'games': stats['games']
+            })
+    
+    good_synergies.sort(key=lambda x: x['winrate'], reverse=True)
+    
+    print(f"Found {len(good_synergies)} hero pairs with {min_games}+ games together")
+    
+    if good_synergies:
+        print(f"\n🔥 Best Synergies:")
+        for i, synergy in enumerate(good_synergies[:10], 1):
+            print(f"  {i:2d}. {synergy['hero1']:<15} + {synergy['hero2']:<15} "
+                  f"{synergy['winrate']:.3f} ({synergy['games']} games)")
+        
+        print(f"\n💔 Worst Synergies:")
+        for i, synergy in enumerate(good_synergies[-10:], 1):
+            print(f"  {i:2d}. {synergy['hero1']:<15} + {synergy['hero2']:<15} "
+                  f"{synergy['winrate']:.3f} ({synergy['games']} games)")
+    
+    return good_synergies
+
+def hero_analysis(df):
+    """Legacy hero analysis (fallback when dotaconstants not available)"""
+    print("\n" + "="*60)
+    print("BASIC HERO ANALYSIS")
     print("="*60)
     
     # Flatten hero picks from both teams
@@ -442,13 +754,18 @@ def data_quality_check(df):
     
     # Check team sizes
     valid_teams = 0
+    invalid_teams = 0
     for _, row in df.head(1000).iterrows():  # Sample check
         if isinstance(row['radiant_team'], list) and isinstance(row['dire_team'], list):
             if len(row['radiant_team']) == 5 and len(row['dire_team']) == 5:
                 valid_teams += 1
+            else:
+                invalid_teams += 1
     
     valid_team_rate = valid_teams / min(1000, len(df)) * 100
     print(f"Valid team composition rate (sample): {valid_team_rate:.1f}%")
+    if invalid_teams > 0:
+        print(f"Invalid team compositions found: {invalid_teams}")
     
     # Check for duplicate matches
     duplicates = df['match_id'].duplicated().sum()
@@ -489,11 +806,15 @@ def main():
     import os
     os.makedirs('../results', exist_ok=True)
     
+    # Load hero constants
+    id_to_name, name_to_id, heroes_data = load_hero_constants()
+    has_constants = bool(id_to_name)
+    
     # Load data
     try:
         df = load_data('../data/public_matches_500k.json')
     except FileNotFoundError:
-        print("❌ Error: Could not find './data/public_matches_500k.json'")
+        print("❌ Error: Could not find '../data/public_matches_500k.json'")
         print("Please make sure your data file is in the correct location.")
         return
     except Exception as e:
@@ -508,14 +829,30 @@ def main():
         game_mode_analysis(df)
         winrate_analysis(df)
         duration_analysis(df)
-        hero_analysis(df)
+        
+        # Choose hero analysis based on constants availability
+        if has_constants:
+            print("\n🎯 Using enhanced hero analysis with dotaconstants!")
+            wr_df = enhanced_hero_analysis(df, id_to_name, heroes_data)
+            if wr_df is not None:
+                synergies = hero_synergy_analysis(df, id_to_name, min_games=30)
+        else:
+            print("\n⚠️  Using basic hero analysis (dotaconstants not available)")
+            hero_analysis(df)
         
         print("\n" + "="*60)
         print("✅ EXPLORATION COMPLETE!")
         print("="*60)
         print("📊 Results saved to ../results/ directory")
-        print("🎯 Dataset looks ready for ML modeling!")
-        print("\nNext steps:")
+        
+        if has_constants:
+            print("🎯 Enhanced analysis complete with hero names!")
+        else:
+            print("💡 For enhanced analysis with hero names:")
+            print("   1. Ensure dotaconstants submodule is in libs/dotaconstants/")
+            print("   2. Run: cd libs/dotaconstants && npm install && npm run build")
+        
+        print("\n🚀 Next steps:")
         print("  1. Feature engineering (one-hot encode heroes)")
         print("  2. Train/validation/test split")
         print("  3. Model selection and training")

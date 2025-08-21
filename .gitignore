@@ -37,13 +37,15 @@ ENV/
 # Data files (large datasets)
 data/*.json
 data/*.csv
+data/*.csv.gz
 data/*.parquet
+data/processed/
 *.pkl
 *.pickle
 
-# Model files
-models/*.joblib
-models/*.pkl
+# Model files and outputs
+models/
+*.joblib
 *.h5
 *.model
 
@@ -66,3 +68,39 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Node.js (for dotaconstants submodule)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Compressed files
+*.zip
+*.tar.gz
+*.rar
+
+# Large output files
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# Ignore large processed datasets but keep structure
+data/processed/*.csv.gz
+data/processed/*.parquet
+data/processed/*.pkl
+
+# Keep important metadata and small config files
+!data/processed/*.json
+!data/processed/*.txt
+!data/processed/README.md
+
+# ML experiment tracking
+mlruns/
+wandb/
+.tensorboard/
+
+# Cache directories
+.cache/
+.pytest_cache/
