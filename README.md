@@ -3,18 +3,19 @@
 Machine learning project to predict match winrates based on hero compositions using OpenDota public matches data.
 
 ## Dataset
-- **500k+ recent Dota 2 matches** from OpenDota API (Aug 14-20, 2025)
+- **2M recent Dota 2 matches** from OpenDota API (Aug 14-20, 2025)
 - **126 unique heroes** with full team compositions
 - **Features**: hero compositions, game metadata, skill brackets
 - **Target**: binary classification (Radiant win/loss)
-- **Current baseline**: 55.45% accuracy (vs 53.48% majority class)
+- **Current baseline**: 55.76% accuracy (vs 53.39% majority class)
 
 ## Key Findings
 
 ### 🎯 **Model Performance**
-- **Hero Baseline**: 55.45% accuracy (+3.7% improvement over baseline)
+- **Hero Baseline**: 55.76% accuracy (+4.4% improvement over baseline)
 - **Best Model**: Logistic Regression (outperformed Random Forest)
-- **AUC Score**: 0.577 - solid predictive power
+- **AUC Score**: 0.581 - solid predictive power
+- **Dataset Size**: 2M matches (4x larger for better stability)
 
 ### 📊 **Hero Meta Insights**
 **Strongest Heroes** (High Winrate):
@@ -33,9 +34,10 @@ Machine learning project to predict match winrates based on hero compositions us
 - Axe: 2.19% pick rate
 
 ### ⚖️ **Game Balance**
-- **Radiant Advantage**: 53.48% winrate (3.48% deviation from balanced)
+- **Radiant Advantage**: 53.39% winrate (3.39% deviation from balanced)
 - **Consistent across ranks**: 51-54% Radiant winrate at all skill levels
 - **Average match duration**: 41.8 minutes
+- **Data stability**: 2M matches confirm hero effects are robust
 
 ## Setup
 
@@ -74,7 +76,7 @@ python hero_baseline.py
 
 ## Project Structure
 ```
-dota2-ml/
+dota-ml/
 ├── data/                          # Dataset files (not in git)
 │   ├── public_matches_500k.json   # Raw OpenDota data
 │   └── processed/                 # Processed ML-ready data
@@ -119,9 +121,10 @@ dota2-ml/
 
 ### **Model Performance**
 ```
-Logistic Regression:  55.45% accuracy (AUC: 0.577)
-Random Forest:        54.77% accuracy (AUC: 0.567)
-Baseline (majority):  53.48% accuracy
+Logistic Regression:  55.76% accuracy (AUC: 0.581)
+Random Forest:        54.48% accuracy (AUC: 0.564)
+Baseline (majority):  53.39% accuracy
+Dataset: 2M matches for robust statistics
 ```
 
 ### **Feature Importance Insights**
@@ -131,20 +134,21 @@ The model correctly identified heroes with extreme winrates:
 - **Linear Relationships**: Logistic Regression outperformed Random Forest, suggesting additive hero effects
 
 ### **Statistical Significance**
-- **500k matches**: Large enough for reliable statistical inferences
+- **2M matches**: Large dataset for reliable statistical inferences
 - **126 heroes**: Comprehensive hero pool coverage
 - **Balanced validation**: Consistent class distribution across splits
+- **Diminishing returns**: 500k→2M shows hero signal plateau (~55.8% ceiling)
 
 ## Next Development Steps
 
 ### **Short Term (Immediate)**
-1. ✅ **Hero baseline established** (55.45% accuracy)
+1. ✅ **Hero baseline established** (55.76% accuracy on 2M matches)
 2. 🔄 **Team composition features** (STR/AGI/INT counts, melee/ranged ratios)
 3. 🔄 **Game metadata features** (rank, game mode, time of day)
 4. 🔄 **Advanced models** (XGBoost, LightGBM, Neural Networks)
 
 ### **Medium Term (Iterative Improvements)**
-1. 🔄 **Hero synergy features** (statistically significant pairs only, min 200+ games)
+1. 🔄 **Hero synergy features** (now viable with 2M matches, min 200+ games)
 2. 🔄 **Role-based features** (carry+support combinations, initiator+nuker)
 3. 🔄 **Hyperparameter optimization** (Grid search, Bayesian optimization)
 4. 🔄 **Ensemble methods** (Model stacking, voting classifiers)
@@ -199,6 +203,7 @@ probabilities = model.predict_proba(X_test)[:, 1]
 - **100% valid matches**: All matches have proper 5v5 team compositions
 - **No missing data**: Complete hero and metadata information
 - **Recent meta**: Data from August 2025, reflects current game balance
+- **Scale tested**: Performance plateau at 2M matches confirms model stability
 
 ### **Model Validation**
 - **Stratified splits**: Maintain class balance across train/val/test
@@ -206,17 +211,36 @@ probabilities = model.predict_proba(X_test)[:, 1]
 - **Performance tracking**: Comprehensive metrics (accuracy, AUC, feature importance)
 
 ### **Computational Requirements**
-- **Training time**: ~2-3 minutes on standard laptop
-- **Memory usage**: ~200MB for full dataset
-- **Storage**: ~80MB compressed CSV files
+- **Training time**: ~5-10 minutes on standard laptop (2M matches)
+- **Memory usage**: ~800MB for full dataset
+- **Storage**: ~200MB compressed CSV files
+- **Convergence**: Logistic regression converges in ~300-500 iterations
 
-## Known Limitations
+## Known Limitations & Insights
 
-1. **Hero synergies**: Current baseline doesn't capture hero interactions
-2. **Game duration**: No temporal features (early/late game preference)
-3. **Player skill**: Individual player performance not included
-4. **Item builds**: No item/ability progression data
-5. **Patch changes**: Model trained on single patch timeframe
+1. **Hero-only ceiling**: ~55.8% accuracy appears to be the limit for hero picks alone
+2. **Diminishing returns**: 500k→2M matches gave minimal improvement (+0.31%)
+3. **Hero synergies**: Current baseline doesn't capture hero interactions
+4. **Game duration**: No temporal features (early/late game preference)
+5. **Player skill**: Individual player performance not included
+6. **Training visibility**: sklearn doesn't expose cost curves (consider PyTorch for research)
+
+## Advanced Analysis Options
+
+### **For Training Visibility:**
+- **sklearn**: Fast, production-ready, but limited training insights
+- **PyTorch**: Full cost curve visibility, custom training loops, research-grade debugging
+- **Recommendation**: Use sklearn for quick experiments, PyTorch for deep analysis
+
+```python
+# Quick sklearn approach (current)
+from sklearn.linear_model import LogisticRegression
+model = LogisticRegression(max_iter=500)  # Usually converges in ~300 iterations
+
+# PyTorch approach for full visibility
+import torch
+# See docs/pytorch_alternative.md for complete implementation
+```
 
 ## Contributing
 
@@ -234,4 +258,4 @@ probabilities = model.predict_proba(X_test)[:, 1]
 
 ---
 
-**Status**: ✅ **Baseline Complete** | 🔄 **Feature Engineering in Progress** | 🎯 **Target: 60%+ Accuracy**
+**Status**: ✅ **Hero Baseline Complete (55.76% on 2M matches)** | 🔄 **Feature Engineering in Progress** | 🎯 **Target: 58-60% with Advanced Features**

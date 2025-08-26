@@ -812,9 +812,9 @@ def main():
     
     # Load data
     try:
-        df = load_data('../data/public_matches_500k.json')
+        df = load_data('../data/public_matches_combined_2000k.json')
     except FileNotFoundError:
-        print("❌ Error: Could not find '../data/public_matches_500k.json'")
+        print("❌ Error: Could not find '../data/public_matches_combined_2000k.json'")
         print("Please make sure your data file is in the correct location.")
         return
     except Exception as e:

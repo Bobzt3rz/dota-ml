@@ -4,8 +4,10 @@ Fixed Hero Baseline - Use CSV instead of Parquet to avoid dependency issues
 """
 
 import json
+import warnings
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
@@ -116,7 +118,7 @@ def train_baseline_models(X_train, X_val, y_train, y_val):
     
     # Model 1: Logistic Regression
     print("Training Logistic Regression...")
-    lr = LogisticRegression(max_iter=1000, random_state=42, class_weight='balanced')
+    lr = LogisticRegression(max_iter=1000, random_state=42, class_weight='balanced', tol=1e-6)
     lr.fit(X_train, y_train)
     
     lr_pred = lr.predict(X_val)
@@ -188,6 +190,30 @@ def analyze_feature_importance(model, feature_names, model_name, top_n=20):
     for i, (feature, importance) in enumerate(dire_features[:10], 1):
         hero = feature.split("_has_")[1].replace('_', ' ')
         print(f"  {i:2d}. {hero:<20} {importance:.4f}")
+
+def quick_model_diagnostics(models):
+    """
+    Quick diagnostics of your trained models
+    """
+    print(f"\n🔧 Quick Model Diagnostics:")
+    print("="*40)
+    
+    for model_name, model in models.items():
+        print(f"\n{model_name.title()}:")
+        
+        if hasattr(model, 'n_iter_'):
+            print(f"  Iterations: {model.n_iter_[0]}/{model.max_iter}")
+            if model.n_iter_[0] < model.max_iter:
+                print(f"  Status: ✅ Converged")
+            else:
+                print(f"  Status: ❌ Hit max_iter limit")
+        
+        if hasattr(model, 'coef_'):
+            weights = model.coef_[0]
+            print(f"  Weight stats: min={weights.min():.3f}, max={weights.max():.3f}")
+            print(f"  Large weights: {(abs(weights) > 0.1).sum()}/{len(weights)}")
+        
+        print(f"  Model type: {type(model).__name__}")
 
 def save_prediction_insights(models, X_test, y_test, feature_names, output_dir):
     """Save some prediction insights for analysis"""
@@ -296,6 +322,9 @@ def hero_baseline_pipeline(data_path, output_dir='../data/processed', test_size=
     for model_name, model in models.items():
         analyze_feature_importance(model, X.columns, model_name)
     
+    print("\n6.5. See convergences:")
+    quick_model_diagnostics(models)
+    
     # Final test evaluation
     print("\n7. Final Test Set Evaluation:")
     print("="*50)
@@ -363,11 +392,11 @@ def hero_baseline_pipeline(data_path, output_dir='../data/processed', test_size=
 if __name__ == "__main__":
     # Run the hero baseline pipeline
     models, results, data_splits = hero_baseline_pipeline(
-        '../data/public_matches_500k.json'
+        '../data/public_matches_combined_2000k.json'
     )
     
     print(f"\n🎯 Next Steps:")
-    print(f"1. ✅ Hero baseline established: 55.45% accuracy")
+    print(f"1. ✅ Hero baseline established")
     print(f"2. 🔄 Try feature engineering (team composition, game metadata)")
     print(f"3. 🚀 Try advanced models (XGBoost, Neural Networks)")
     print(f"4. 🎮 Build prediction interface")
